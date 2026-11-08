@@ -1,0 +1,2 @@
+# condidatos
+bypass trazor
