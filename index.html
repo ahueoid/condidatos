@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRUD de contatos</title>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: Arial, sans-serif;
+      background: #10121a;
+      color: #eef0f6;
+    }
+
+    main {
+      max-width: 850px;
+      margin: 40px auto;
+      padding: 28px;
+      background: #1a1d29;
+      border-radius: 16px;
+    }
+
+    h1 { margin-top: 0; }
+
+    form {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+    }
+
+    input, button {
+      padding: 12px;
+      font: inherit;
+      border-radius: 8px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid #43495f;
+      background: #111420;
+      color: white;
+    }
+
+    button {
+      border: none;
+      background: #91a7ff;
+      color: #10121a;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover { filter: brightness(1.1); }
+    button:focus-visible, input:focus-visible {
+      outline: 3px solid #bac7ff;
+      outline-offset: 3px;
+    }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .secondary { background: #c0c5d6; }
+    .danger { background: #ff9b9b; }
+    .table-wrapper { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 14px 10px;
+      border-bottom: 1px solid #34394c;
+    }
+
+    td { overflow-wrap: anywhere; }
+    #status { min-height: 24px; color: #c4d0ff; }
+    [hidden] { display: none !important; }
+
+    @media (max-width: 600px) {
+      body { padding: 12px; }
+      main { margin: 12px auto; padding: 18px; }
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1>Contatos</h1>
+
+    <form id="form">
+      <label for="name">
+        Nome
+        <input id="name" maxlength="100" autocomplete="name" required>
+      </label>
+
+      <label for="email">
+        E-mail
+        <input
+          id="email"
+          type="email"
+          maxlength="254"
+          autocomplete="email"
+          required
+        >
+      </label>
+
+      <div class="buttons">
+        <button id="save" type="submit">Cadastrar</button>
+        <button id="cancel" class="secondary" type="button" hidden>
+          Cancelar edição
+        </button>
+      </div>
+    </form>
+
+    <p id="status" role="status" aria-live="polite"></p>
+
+    <div class="table-wrapper">
+      <table>
+        <caption>Contatos cadastrados</caption>
+        <thead>
+          <tr>
+            <th scope="col">Nome</th>
+            <th scope="col">E-mail</th>
+            <th scope="col">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="list"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    const STORAGE_KEY = "crud-contatos-v1";
+    const form = document.querySelector("#form");
+    const nameInput = document.querySelector("#name");
+    const emailInput = document.querySelector("#email");
+    const saveButton = document.querySelector("#save");
+    const cancelButton = document.querySelector("#cancel");
+    const list = document.querySelector("#list");
+    const status = document.querySelector("#status");
+
+    let contacts = [];
+    let editingId = null;
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+
+      if (
+        !Array.isArray(saved) ||
+        !saved.every(contact =>
+          contact &&
+          typeof contact.id === "string" &&
+          typeof contact.name === "string" &&
+          typeof contact.email === "string"
+        )
+      ) {
+        throw new Error("Dados inválidos");
+      }
+
+      contacts = saved;
+    } catch {
+      status.textContent = "Não foi possível carregar os dados salvos.";
+    }
+
+    function persist(nextContacts) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextContacts));
+        contacts = nextContacts;
+        render();
+        return true;
+      } catch {
+        status.textContent =
+          "Não foi possível salvar. Verifique o armazenamento do navegador.";
+        return false;
+      }
+    }
+
+    function resetForm() {
+      editingId = null;
+      form.reset();
+      saveButton.textContent = "Cadastrar";
+      cancelButton.hidden = true;
+    }
+
+    function createButton(label, className, action) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.className = className;
+      button.addEventListener("click", action);
+      return button;
+    }
+
+    function editContact(contact) {
+      editingId = contact.id;
+      nameInput.value = contact.name;
+      emailInput.value = contact.email;
+      saveButton.textContent = "Salvar alterações";
+      cancelButton.hidden = false;
+      status.textContent = "Editando contato.";
+      nameInput.focus();
+    }
+
+    function deleteContact(contact) {
+      if (!confirm(`Excluir o contato "${contact.name}"?`)) return;
+
+      const nextContacts = contacts.filter(item => item.id !== contact.id);
+
+      if (persist(nextContacts)) {
+        if (editingId === contact.id) resetForm();
+        status.textContent = "Contato excluído.";
+      }
+    }
+
+    function render() {
+      list.replaceChildren();
+
+      if (contacts.length === 0) {
+        const row = list.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 3;
+        cell.textContent = "Nenhum contato cadastrado.";
+        return;
+      }
+
+      contacts.forEach(contact => {
+        const row = list.insertRow();
+
+        row.insertCell().textContent = contact.name;
+        row.insertCell().textContent = contact.email;
+
+        const actions = document.createElement("div");
+        actions.className = "buttons";
+        actions.append(
+          createButton("Editar", "secondary", () => editContact(contact)),
+          createButton("Excluir", "danger", () => deleteContact(contact))
+        );
+
+        row.insertCell().append(actions);
+      });
+    }
+
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+
+      const name = nameInput.value.trim();
+      const email = emailInput.value.trim();
+
+      if (!name || !email) {
+        status.textContent = "Preencha nome e e-mail.";
+        return;
+      }
+
+      const isEditing = editingId !== null;
+      const contact = {
+        id: editingId || crypto.randomUUID(),
+        name,
+        email
+      };
+
+      const nextContacts = isEditing
+        ? contacts.map(item => item.id === editingId ? contact : item)
+        : [...contacts, contact];
+
+      if (persist(nextContacts)) {
+        resetForm();
+        status.textContent = isEditing
+          ? "Contato atualizado."
+          : "Contato cadastrado.";
+      }
+    });
+
+    cancelButton.addEventListener("click", () => {
+      resetForm();
+      status.textContent = "Edição cancelada.";
+    });
+
+    render();
+  </script>
+</body>
+</html>
